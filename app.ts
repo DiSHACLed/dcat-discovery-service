@@ -9,6 +9,7 @@ import { loadCatalog } from './load';
 import { search } from './search';
 import { prettyCatalogStore, prettySearchResults } from './pretty';
 import { sources } from './config/sources';
+import { MU_ID } from './config/sources';
 
 const sparqlParser = new SPARQLParser();
 
@@ -61,6 +62,18 @@ app.get('/search', (req: Request, res: Response) => {
 
 // ─── POST /reload ─────────────────────────────────────────────────────────────
 
+async function reloadSource(id: string): Promise<void> {
+  const record = await loadCatalog(id, sources[id]!);
+  const existing = catalogStore.findIndex(r => r.id === id);
+  if (record === null) {
+    if (existing !== -1) catalogStore.splice(existing, 1);
+  } else if (existing !== -1) {
+    catalogStore.splice(existing, 1, record);
+  } else {
+    catalogStore.push(record);
+  }
+}
+
 app.post('/reload', async (req: Request, res: Response) => {
   const body: { id?: unknown } = req.body;
   const id = typeof body?.id === 'string' ? body.id : undefined;
@@ -69,19 +82,27 @@ app.post('/reload', async (req: Request, res: Response) => {
     return res.status(400).send(`id must be one of: ${validIds.join(', ')}`);
 
   try {
-    const record = await loadCatalog(id, sources[id]!);
-    const existing = catalogStore.findIndex(r => r.id === id);
-    if (record === null) {
-      if (existing !== -1) catalogStore.splice(existing, 1);
-    } else if (existing !== -1) {
-      catalogStore.splice(existing, 1, record);
-    } else {
-      catalogStore.push(record);
-    }
+    await reloadSource(id);
     res.type('text/plain').send(prettyCatalogStore(catalogStore));
   } catch {
     res.status(500).send('Failed to reload source');
   }
+});
+
+// ─── POST /delta for mu-internal ──────────────────────────────────────────────────────────────
+
+app.post('/delta', async (req: Request, res: Response) => {
+  // we assume changeset has at least one dct:conformsTo (see rules.js of app)
+  console.log('[DELTA] Received Changeset[]; refreshing mu index!');
+  try {
+    await reloadSource(MU_ID);
+    console.log('[DELTA] Reloaded mu-internal due to dct:conformsTo change');
+    console.log(prettyCatalogStore(catalogStore));
+  } catch {
+    console.error('[delta] Reload of mu-internal failed');
+    return res.status(500).json({ error: 'Reload failed' });
+  }
+  res.status(200).end();
 });
 
 app.use(errorHandler);

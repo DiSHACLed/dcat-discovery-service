@@ -115,13 +115,13 @@ export async function loadCatalog(id: string, source: CatalogSource): Promise<Ca
   try {
     queryable = await constructQueryable(source);
   } catch (e) {
-    console.warn(`[load] Failed to load source ${id} (${label}): ${e}`);
+    console.warn(`[LOAD] Failed to load source ${id} (${label}): ${e}`);
     return null;
   }
 
   const entities = await discoverEntities(queryable, source.graph);
   if (!isNonEmpty(entities)) {
-    console.warn(`[load] No annotated entities found for source ${id} (${label}) — skipping catalog.`);
+    console.warn(`[LOAD] No annotated entities found for source ${id} (${label}) — skipping catalog.`);
     return null;
   }
   return { id, source, entities };
