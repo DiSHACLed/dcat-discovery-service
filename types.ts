@@ -36,6 +36,7 @@ export type CatalogEntity = {
 };
 
 export type CatalogRecord = {
+  id: string;
   source: CatalogSource;
   entities: NonEmptyArray<CatalogEntity>;
 };

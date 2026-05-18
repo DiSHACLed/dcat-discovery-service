@@ -13,7 +13,7 @@ import { sources } from './config/sources';
 const sparqlParser = new SPARQLParser();
 
 export const catalogStore: CatalogRecord[] = filterNonNil(
-  await Promise.all(sources.map(loadCatalog))
+  await Promise.all(Object.entries(sources).map(([id, src]) => loadCatalog(id, src)))
 );
 console.log(prettyCatalogStore(catalogStore));
 
@@ -21,7 +21,8 @@ console.log(prettyCatalogStore(catalogStore));
 
 app.get('/index', (req: Request, res: Response) => {
   if (req.accepts('application/json')) {
-    return res.json(catalogStore.map(({ source, entities }) => ({
+    return res.json(catalogStore.map(({ id, source, entities }) => ({
+      id,
       source,
       entities: entities.map(({ entity, entityType, shapes }) => ({
         entity,
@@ -61,17 +62,21 @@ app.get('/search', (req: Request, res: Response) => {
 // ─── POST /reload ─────────────────────────────────────────────────────────────
 
 app.post('/reload', async (req: Request, res: Response) => {
-  const body: { index?: unknown } = req.body;
-  const index = typeof body?.index === 'number' ? body.index : NaN;
-  if (!Number.isInteger(index) || index < 0 || index >= sources.length)
-    return res.status(400).send(`index must be an integer in [0, ${sources.length - 1}]`);
+  const body: { id?: unknown } = req.body;
+  const id = typeof body?.id === 'string' ? body.id : undefined;
+  const validIds = Object.keys(sources);
+  if (id === undefined || !validIds.includes(id))
+    return res.status(400).send(`id must be one of: ${validIds.join(', ')}`);
 
   try {
-    const record = await loadCatalog(sources[index]!);
+    const record = await loadCatalog(id, sources[id]!);
+    const existing = catalogStore.findIndex(r => r.id === id);
     if (record === null) {
-      catalogStore.splice(index, 1);
+      if (existing !== -1) catalogStore.splice(existing, 1);
+    } else if (existing !== -1) {
+      catalogStore.splice(existing, 1, record);
     } else {
-      catalogStore.splice(index, 1, record);
+      catalogStore.push(record);
     }
     res.type('text/plain').send(prettyCatalogStore(catalogStore));
   } catch {

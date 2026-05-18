@@ -19,8 +19,8 @@ function prettyCatalogEntity(entity: CatalogEntity): string[] {
   return lines;
 }
 
-function prettyCatalogRecord(index: number, record: CatalogRecord): string[] {
-  const lines = ['', `[${index}] ${sourceLabel(record)}`];
+function prettyCatalogRecord(record: CatalogRecord): string[] {
+  const lines = ['', `[${record.id}] ${sourceLabel(record)}`];
   if (record.entities.length === 0) {
     lines.push('    (no entities)');
   } else {
@@ -33,8 +33,8 @@ function prettyCatalogRecord(index: number, record: CatalogRecord): string[] {
 
 export function prettyCatalogStore(store: CatalogRecord[]): string {
   const lines = [`=== Catalog Store (${store.length} source${store.length !== 1 ? 's' : ''}) ===`];
-  for (const [i, record] of store.entries())
-    lines.push(...prettyCatalogRecord(i + 1, record));
+  for (const record of store)
+    lines.push(...prettyCatalogRecord(record));
   return lines.join('\n');
 }
 

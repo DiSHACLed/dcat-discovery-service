@@ -105,7 +105,7 @@ async function discoverEntities(queryable: Queryable, graph?: string): Promise<C
   return groupByResource(resolved);
 }
 
-export async function loadCatalog(source: CatalogSource): Promise<CatalogRecord | null> {
+export async function loadCatalog(id: string, source: CatalogSource): Promise<CatalogRecord | null> {
   const s = source.source;
   const label = typeof s === 'function'
     ? 'custom queryable'
@@ -115,14 +115,14 @@ export async function loadCatalog(source: CatalogSource): Promise<CatalogRecord 
   try {
     queryable = await constructQueryable(source);
   } catch (e) {
-    console.warn(`[load] Failed to load source ${label}: ${e}`);
+    console.warn(`[load] Failed to load source ${id} (${label}): ${e}`);
     return null;
   }
 
   const entities = await discoverEntities(queryable, source.graph);
   if (!isNonEmpty(entities)) {
-    console.warn(`[load] No annotated entities found for source ${label} — skipping catalog.`);
+    console.warn(`[load] No annotated entities found for source ${id} (${label}) — skipping catalog.`);
     return null;
   }
-  return { source, entities };
+  return { id, source, entities };
 }
