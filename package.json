@@ -1,10 +1,19 @@
 {
   "name": "discovery-service",
   "version": "1.0.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --noEmit --watch"
+  },
   "dependencies": {
-    "query-shape-detection": "file:./query-shape-matching-algorithm",
-    "n3": "^2.0.3",
+    "@comunica/query-sparql": "^5.2.2",
+    "@rdfjs/types": "^2.0.1",
     "@types/n3": "^1.26.1",
-    "@rdfjs/types": "^2.0.1"
+    "n3": "^2.0.3",
+    "query-shape-detection": "file:./query-shape-matching-algorithm"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "typescript": "^5.8.0"
   }
 }

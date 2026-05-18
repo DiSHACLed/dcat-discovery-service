@@ -1,0 +1,83 @@
+{
+  // JSON doesn't support comments natively, but tsc accepts .jsonc and most editors
+  // tolerate comments in tsconfig.json. See typescript.md for full rationale.
+  "compilerOptions": {
+
+    // ── Compilation target ───────────────────────────────────────────────────
+    // The mu-javascript-template uses Babel (not tsc) for the actual transpilation
+    // inside Docker, so target/module/lib here only matter for type-checking.
+    // ES2022 gives us top-level await (used in app.ts) and class fields.
+    "target": "ES2022",
+
+    // The template emits ES modules at runtime. "ES2022" here means tsc understands
+    // static import/export syntax in the source.
+    "module": "ES2022",
+
+    // "node" (classic Node resolution) is required because imports in this codebase
+    // use bare, extension-less specifiers (e.g. `from './load'`, not `from './load.ts'`).
+    // "bundler" or "node16" would require explicit extensions, which Babel doesn't need.
+    "moduleResolution": "node",
+
+    // ES2023 lib gives access to Array.prototype.findLast, etc. without DOM globals.
+    "lib": ["ES2023"],
+
+    // ── Strict mode ─────────────────────────────────────────────────────────
+    // Umbrella flag — enables: strictNullChecks, strictFunctionTypes,
+    // strictBindCallApply, strictPropertyInitialization, noImplicitAny,
+    // noImplicitThis, alwaysStrict.
+    "strict": true,
+
+    // ── Extra strict flags (pyright "strict" equivalent) ────────────────────
+    // Array/record index access returns T | undefined instead of T.
+    // Forces null-checks before using arr[i] or record[key].
+    "noUncheckedIndexedAccess": true,
+
+    // Methods that override a base class method must use the `override` keyword.
+    // Prevents silent breakage when the base signature changes.
+    "noImplicitOverride": true,
+
+    // Properties declared via an index signature must be accessed with bracket
+    // notation (e.g. req.query['foo']) rather than dot notation (req.query.foo).
+    // Makes it obvious at the call site that the lookup may return undefined.
+    "noPropertyAccessFromIndexSignature": true,
+
+    // With exactOptionalPropertyTypes, `{ foo?: string }` means the property is
+    // either absent or a string — you cannot explicitly assign `undefined` to it.
+    // Without this flag, optional and `| undefined` are silently equivalent.
+    "exactOptionalPropertyTypes": true,
+
+    // ── Emit ────────────────────────────────────────────────────────────────
+    // tsc is used for type-checking only. Babel (inside the Docker image) does
+    // the actual transpilation. noEmit ensures tsc never writes any files.
+    "noEmit": true,
+
+    // ── Interop / compatibility ──────────────────────────────────────────────
+    // Allows `import x from 'cjs-module'` for CommonJS modules that export via
+    // module.exports. Required for most npm packages.
+    "esModuleInterop": true,
+
+    // Skip type-checking of .d.ts files inside node_modules. Speeds up
+    // type-checking significantly and avoids errors from poorly-typed packages.
+    "skipLibCheck": true,
+
+    // Prevents bugs from case-insensitive file systems (e.g. importing './Foo'
+    // when the file is 'foo.ts' will error on Linux too).
+    "forceConsistentCasingInFileNames": true,
+
+    // Each file must be independently analysable without cross-file inference.
+    // Required for Babel, which transpiles files in isolation (no full program).
+    "isolatedModules": true
+  },
+
+  // ── Include / exclude ───────────────────────────────────────────────────────
+  // Only include project-owned source files. node_modules is always excluded by
+  // default but listed explicitly for clarity.
+  //
+  // query-shape-matching-algorithm is a local git submodule used as a file:
+  // dependency. It has its own tsconfig.json and is compiled independently.
+  // We treat it as an opaque installed package (Option A / "project references"
+  // not used): tsc resolves its types from node_modules/query-shape-detection/
+  // build/*.d.ts, exactly like any other npm package. See typescript.md.
+  "include": ["*.ts", "config/**/*.ts", "result/**/*.ts"],
+  "exclude": ["node_modules", "query-shape-matching-algorithm"]
+}
