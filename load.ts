@@ -1,9 +1,24 @@
+import * as fs from 'fs';
+import * as url from 'url';
+import * as path from 'path';
 import type * as RDF from '@rdfjs/types';
 import { shaclShapeFromQuads } from 'query-shape-detection';
 import type { IShape } from 'query-shape-detection';
 import type { CatalogSource, CatalogRecord, CatalogEntity, EntityType, Queryable } from './types';
 import { isNonEmpty, filterNonNil } from './types';
 import { constructQueryable } from './queryable';
+
+const RELEVANT_QUADS_TEMPLATE = fs.readFileSync(
+  path.join(path.dirname(url.fileURLToPath(import.meta.url)), 'relevant-quads.sparql'),
+  'utf-8'
+);
+
+function relevantQuads(queryable: Queryable, shapeIri: string, shapesGraph?: string): Promise<RDF.Quad[]> {
+  const query = RELEVANT_QUADS_TEMPLATE
+    .replace('<SHAPE_IRI>', `<${shapeIri}>`)
+    .replace('<GRAPH_SCOPE>', shapesGraph ? `GRAPH <${shapesGraph}>` : '');
+  return queryable.queryQuads(query);
+}
 
 const IRI_TO_ENTITY_TYPE: Record<string, EntityType> = {
   'http://www.w3.org/ns/dcat#Dataset':      'dcat:Dataset',
@@ -23,38 +38,6 @@ function graphScope(body: string, graph?: string): string {
 
 type Row = { resource: string; type: EntityType; shapeIri: string; shapesGraph?: string };
 
-async function resolveShapes(
-  rows: Row[],
-  getRelevantQuads: (shapeIri: string, shapesGraph?: string) => Promise<RDF.Quad[]>,
-): Promise<{ row: Row; shape: IShape }[]> {
-  const seen = new Set<string>();
-  const deduped = rows.filter(r => {
-    const key = `${r.resource}\0${r.shapeIri}`;
-    return seen.has(key) ? false : (seen.add(key), true);
-  });
-
-  const resolved = await Promise.all(deduped.map(async row => ({
-    row,
-    shape: await shaclShapeFromQuads(await getRelevantQuads(row.shapeIri, row.shapesGraph), row.shapeIri),
-  })));
-
-  return resolved.filter((r): r is { row: Row; shape: IShape } => !(r.shape instanceof Error));
-}
-
-function groupByResource(resolved: { row: Row; shape: IShape }[]): CatalogEntity[] {
-  const byResource = new Map<string, { type: EntityType; shapes: IShape[] }>();
-  for (const { row, shape } of resolved) {
-    if (!byResource.has(row.resource)) byResource.set(row.resource, { type: row.type, shapes: [] });
-    byResource.get(row.resource)!.shapes.push(shape);
-  }
-
-  return filterNonNil(
-    Array.from(byResource.entries()).map(([entity, { type, shapes }]) =>
-      isNonEmpty(shapes) ? { entity, entityType: type, shapes } : null
-    )
-  );
-}
-
 async function queryRows(queryable: Queryable, sparql: string): Promise<Row[]> {
   const rows: Row[] = [];
   const bindings = await queryable.queryBindings(sparql);
@@ -70,7 +53,7 @@ async function queryRows(queryable: Queryable, sparql: string): Promise<Row[]> {
   return rows;
 }
 
-async function discoverEntities(queryable: Queryable, graph?: string): Promise<CatalogEntity[]> {
+async function discoverCatalogEntities(queryable: Queryable, graph?: string): Promise<CatalogEntity[]> {
   const DCAT = 'http://www.w3.org/ns/dcat#';
   const DCT  = 'http://purl.org/dc/terms/';
   const SH   = 'http://www.w3.org/ns/shacl#';
@@ -94,15 +77,34 @@ async function discoverEntities(queryable: Queryable, graph?: string): Promise<C
       }`),
   ])).flat();
 
-  const getRelevantQuads = (shapeIri: string, shapesGraph?: string) =>
-    queryable.queryQuads(
-      shapesGraph
-        ? `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <${shapesGraph}> { ?s ?p ?o } }` // TODO restrict!!
-        : `CONSTRUCT { ?s ?p ?o } WHERE { ${graphScope(`?s ?p ?o`, graph)} }`
-    );
+  // in theory, we could annotate a resource in different ways...
+  const seen = new Set<string>();
+  const deduped = rows.filter(r => {
+    const key = `${r.resource}\0${r.shapeIri}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
 
-  const resolved = await resolveShapes(rows, getRelevantQuads);
-  return groupByResource(resolved);
+  // parsing of each shapeIri in parallel
+  const resolved : {resource : string, type : EntityType, shape : IShape}[] = (await Promise.all(
+    deduped.map(async row => {
+      const shape = await shaclShapeFromQuads(await relevantQuads(queryable, row.shapeIri, row.shapesGraph), row.shapeIri);
+      return shape instanceof Error ? null : { resource: row.resource, type: row.type, shape };
+    })
+  )).filter((r): r is { resource: string; type: EntityType; shape: IShape } => r !== null);
+
+  // the remainder is just bureaucracy
+  const byResource = new Map<string, { type: EntityType; shapes: IShape[] }>();
+  for (const { resource, type, shape } of resolved) {
+    if (!byResource.has(resource)) byResource.set(resource, { type, shapes: [] });
+    byResource.get(resource)!.shapes.push(shape);
+  }
+
+  return filterNonNil(
+    Array.from(byResource.entries()).map(([entity, { type, shapes }]) =>
+      isNonEmpty(shapes) ? { entity, entityType: type, shapes } : null
+    )
+  );
+
 }
 
 export async function loadCatalog(id: string, source: CatalogSource): Promise<CatalogRecord | null> {
@@ -119,7 +121,7 @@ export async function loadCatalog(id: string, source: CatalogSource): Promise<Ca
     return null;
   }
 
-  const entities = await discoverEntities(queryable, source.graph);
+  const entities = await discoverCatalogEntities(queryable, source.graph);
   if (!isNonEmpty(entities)) {
     console.warn(`[LOAD] No annotated entities found for source ${id} (${label}) — skipping catalog.`);
     return null;

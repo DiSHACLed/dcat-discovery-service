@@ -1,0 +1,86 @@
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+CONSTRUCT {
+  ?shapeIri sh:property ?propShape .
+  ?shapeIri sh:closed ?closed .
+  ?shapeIri sh:or ?orHead .
+  ?shapeIri sh:xone ?xoneHead .
+  ?shapeIri sh:not ?notTarget .
+
+  ?propShape sh:path ?path .
+  ?propShape sh:minCount ?minCount .
+  ?propShape sh:maxCount ?maxCount .
+  ?propShape sh:class ?class .
+  ?propShape sh:datatype ?datatype .
+  ?propShape sh:node ?node .
+
+  ?notTarget sh:path ?notPath .
+  ?notTarget sh:minCount ?notMin .
+  ?notTarget sh:maxCount ?notMax .
+  ?notTarget sh:class ?notClass .
+  ?notTarget sh:datatype ?notDatatype .
+  ?notTarget sh:node ?notNode .
+
+  ?listNode rdf:first ?listMember .
+  ?listNode rdf:rest ?listNext .
+
+  ?listMember sh:property ?memberPropShape .
+  ?listMember sh:path ?memberDirectPath .
+
+  ?memberPropShape sh:path ?memberPath .
+  ?memberPropShape sh:minCount ?memberMin .
+  ?memberPropShape sh:maxCount ?memberMax .
+  ?memberPropShape sh:class ?memberClass .
+  ?memberPropShape sh:datatype ?memberDatatype .
+  ?memberPropShape sh:node ?memberNode .
+}
+WHERE {
+  <GRAPH_SCOPE> {
+  BIND(<SHAPE_IRI> AS ?shapeIri)
+
+  # Direct property shapes
+  OPTIONAL {
+    ?shapeIri sh:property ?propShape .
+    OPTIONAL { ?propShape sh:path ?path }
+    OPTIONAL { ?propShape sh:minCount ?minCount }
+    OPTIONAL { ?propShape sh:maxCount ?maxCount }
+    OPTIONAL { ?propShape sh:class ?class }
+    OPTIONAL { ?propShape sh:datatype ?datatype }
+    OPTIONAL { ?propShape sh:node ?node }
+  }
+
+  # sh:closed
+  OPTIONAL { ?shapeIri sh:closed ?closed }
+
+  # sh:not
+  OPTIONAL {
+    ?shapeIri sh:not ?notTarget .
+    OPTIONAL { ?notTarget sh:path ?notPath }
+    OPTIONAL { ?notTarget sh:minCount ?notMin }
+    OPTIONAL { ?notTarget sh:maxCount ?notMax }
+    OPTIONAL { ?notTarget sh:class ?notClass }
+    OPTIONAL { ?notTarget sh:datatype ?notDatatype }
+    OPTIONAL { ?notTarget sh:node ?notNode }
+  }
+
+  # sh:or / sh:xone RDF list + members
+  OPTIONAL {
+    { ?shapeIri sh:or ?orHead } UNION { ?shapeIri sh:xone ?xoneHead }
+    BIND(COALESCE(?orHead, ?xoneHead) AS ?listHead) # continue with just ?listHead
+    ?listHead rdf:rest* ?listNode . # every ?listNode starting from ?listhead (including itself)
+    ?listNode rdf:first ?listMember ;
+              rdf:rest ?listNext .
+    OPTIONAL {
+      ?listMember sh:property ?memberPropShape .
+      OPTIONAL { ?memberPropShape sh:path ?memberPath }
+      OPTIONAL { ?memberPropShape sh:minCount ?memberMin }
+      OPTIONAL { ?memberPropShape sh:maxCount ?memberMax }
+      OPTIONAL { ?memberPropShape sh:class ?memberClass }
+      OPTIONAL { ?memberPropShape sh:datatype ?memberDatatype }
+      OPTIONAL { ?memberPropShape sh:node ?memberNode }
+    }
+    OPTIONAL { ?listMember sh:path ?memberDirectPath }
+  }
+  }
+}
